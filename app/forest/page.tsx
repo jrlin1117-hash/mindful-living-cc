@@ -12,9 +12,17 @@ import {
   getGrowthInfo,
   GrowthInfo,
   getRandomGrowthMessage,
+  getStreak,
 } from '@/lib/storage';
 
 interface PlantDisplay {
+  attitude: typeof ATTITUDES[0];
+  value: number;
+  growthInfo: GrowthInfo;
+  message: string;
+}
+
+interface ExpandedPlant {
   attitude: typeof ATTITUDES[0];
   value: number;
   growthInfo: GrowthInfo;
@@ -28,7 +36,8 @@ export default function ForestPage() {
   const [recentRecords, setRecentRecords] = useState<Array<{ type: 'card' | 'meditation'; date: string; content: string; plant?: string }>>([]);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [hoveredPlant, setHoveredPlant] = useState<string | null>(null);
+  const [expandedPlant, setExpandedPlant] = useState<ExpandedPlant | null>(null);
+  const [streak, setStreak] = useState({ currentStreak: 0 });
 
   const loadData = () => {
     const values = getPlantValues();
@@ -46,6 +55,7 @@ export default function ForestPage() {
     setTotalValue(getTotalMindfulValue());
     setTodayStats(getTodayStats());
     setRecentRecords(getRecentRecords());
+    setStreak(getStreak());
   };
 
   useEffect(() => {
@@ -57,6 +67,15 @@ export default function ForestPage() {
     resetAllData();
     loadData();
     setShowResetConfirm(false);
+    setExpandedPlant(null);
+  };
+
+  const handlePlantClick = (plant: PlantDisplay) => {
+    if (expandedPlant?.attitude.name === plant.attitude.name) {
+      setExpandedPlant(null);
+    } else {
+      setExpandedPlant(plant);
+    }
   };
 
   const formatDate = (dateStr: string): string => {
@@ -83,24 +102,86 @@ export default function ForestPage() {
       </div>
 
       {/* 总览数据 */}
-      <div className="card p-6 mb-6 bg-gradient-to-br from-sage-500 to-moss-600 text-white">
+      <div className="card p-5 mb-5 bg-gradient-to-br from-sage-500 to-moss-600 text-white">
         <div className="flex justify-around text-center">
           <div className="flex-1">
-            <div className="text-3xl font-light mb-1">{mounted ? totalValue : '-'}</div>
+            <div className="text-2xl font-light mb-1">{mounted ? totalValue : '-'}</div>
             <div className="text-xs opacity-70">总正念值</div>
           </div>
           <div className="w-px bg-white/20" />
           <div className="flex-1">
-            <div className="text-3xl font-light mb-1">{mounted ? todayStats.cardCount : '-'}</div>
+            <div className="text-2xl font-light mb-1">{mounted ? todayStats.cardCount : '-'}</div>
             <div className="text-xs opacity-70">今日态度卡</div>
           </div>
           <div className="w-px bg-white/20" />
           <div className="flex-1">
-            <div className="text-3xl font-light mb-1">{mounted ? todayStats.meditationCount : '-'}</div>
+            <div className="text-2xl font-light mb-1">{mounted ? todayStats.meditationCount : '-'}</div>
             <div className="text-xs opacity-70">今日冥想</div>
           </div>
         </div>
+
+        {/* Streak */}
+        {streak.currentStreak > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/20 text-center">
+            <span className="text-sm">
+              🔥 连续 {streak.currentStreak} 天浇灌森林
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* 展开的植物详情 */}
+      {expandedPlant && (
+        <div className="card p-5 mb-5 bg-gradient-to-br from-white to-cream-100 animate-scale-in">
+          <div className="flex items-start gap-4">
+            <div className="text-5xl">{expandedPlant.attitude.plantEmoji}</div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h3 className="font-medium text-sage-700 text-lg">{expandedPlant.attitude.plant}</h3>
+                  <p className="text-sm text-moss-600">{expandedPlant.attitude.name}</p>
+                </div>
+                <button
+                  onClick={() => setExpandedPlant(null)}
+                  className="text-sage-400 hover:text-sage-600 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs text-sage-400 mb-1">态度释义</div>
+                  <p className="text-sm text-sage-600">{expandedPlant.attitude.meaning}</p>
+                </div>
+
+                <div>
+                  <div className="text-xs text-sage-400 mb-1">为什么是 {expandedPlant.attitude.plant}？</div>
+                  <p className="text-sm text-sage-600 italic">
+                    "{expandedPlant.attitude.plantReason}"
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4 pt-2">
+                  <div className="text-center">
+                    <div className="text-xl font-medium text-moss-600">{expandedPlant.value}</div>
+                    <div className="text-xs text-sage-400">正念值</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl">{expandedPlant.growthInfo.emoji}</div>
+                    <div className="text-xs text-sage-400">{expandedPlant.growthInfo.stage === 'mature' ? '成熟' : expandedPlant.growthInfo.stage === 'lush' ? '茂盛' : expandedPlant.growthInfo.stage === 'growing' ? '生长中' : '幼苗'}</div>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-sage-500 italic">
+                      "{expandedPlant.message}"
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 森林网格 */}
       <div className="mb-6">
@@ -112,26 +193,25 @@ export default function ForestPage() {
 
         <div className="grid grid-cols-3 gap-3">
           {plants.map((plant, index) => {
-            const { attitude, value, growthInfo, message } = plant;
-            const isHovered = hoveredPlant === attitude.name;
+            const { attitude, value, growthInfo } = plant;
+            const isExpanded = expandedPlant?.attitude.name === attitude.name;
 
             return (
-              <div
+              <button
                 key={attitude.name}
-                className={`relative rounded-3xl p-4 bg-gradient-to-br ${attitude.gradient} transition-all duration-500 cursor-pointer group
-                  ${isHovered ? 'scale-105 shadow-soft-lg z-10' : ''}
+                onClick={() => handlePlantClick(plant)}
+                className={`rounded-3xl p-3 bg-gradient-to-br ${attitude.gradient} transition-all duration-500 cursor-pointer text-left
+                  ${isExpanded ? 'ring-2 ring-moss-400 scale-105' : 'hover:scale-102'}
                 `}
                 style={{
-                  minHeight: `${120 + growthInfo.scale * 40}px`,
-                  animationDelay: `${index * 0.1}s`,
+                  minHeight: `${100 + growthInfo.scale * 30}px`,
+                  animationDelay: `${index * 0.05}s`,
                 }}
-                onMouseEnter={() => setHoveredPlant(attitude.name)}
-                onMouseLeave={() => setHoveredPlant(null)}
               >
                 {/* 植物图标 */}
-                <div className="flex items-center justify-center mb-3">
+                <div className="flex items-center justify-center mb-2">
                   <div
-                    className={`${getPlantVisualSize(growthInfo)} transition-all duration-700 plant-grow`}
+                    className={`${getPlantVisualSize(growthInfo)} transition-all duration-700`}
                     style={{
                       transform: `scale(${growthInfo.scale})`,
                       opacity: growthInfo.opacity,
@@ -143,24 +223,14 @@ export default function ForestPage() {
 
                 {/* 植物名称 */}
                 <div className="text-center">
-                  <div className="text-sm font-medium text-sage-700">{attitude.plant}</div>
+                  <div className="text-xs font-medium text-sage-700">{attitude.plant}</div>
+                  <div className="text-xs text-sage-500">{attitude.name}</div>
                   <div className="flex items-center justify-center gap-1 mt-1">
                     <span className="text-xs">{growthInfo.emoji}</span>
-                    <span className="text-xs text-sage-500">{value}</span>
+                    <span className="text-xs text-sage-400">{value}</span>
                   </div>
                 </div>
-
-                {/* Hover 提示 */}
-                <div
-                  className={`absolute inset-x-0 bottom-0 bg-white/90 backdrop-blur-sm rounded-b-3xl p-3 transition-all duration-300
-                    ${isHovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}
-                  `}
-                >
-                  <p className="text-xs text-sage-600 text-center leading-relaxed">
-                    {message}
-                  </p>
-                </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -228,7 +298,10 @@ export default function ForestPage() {
       {/* 重置确认 */}
       {showResetConfirm ? (
         <div className="card p-5 border-2 border-red-100">
-          <p className="text-sm text-red-600 text-center mb-4">确定要重置所有数据吗？<br />这将清空你的整个森林</p>
+          <p className="text-sm text-red-600 text-center mb-4">
+            确定要重置所有数据吗？<br />
+            <span className="text-xs">这将清空你的整个森林</span>
+          </p>
           <div className="flex gap-3">
             <button
               onClick={() => setShowResetConfirm(false)}

@@ -50,7 +50,7 @@ export default function RootLayout({
         </main>
 
         {/* 底部导航 */}
-        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-cream-100/90 backdrop-blur-md border-t border-sage-100/50 md:hidden">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-cream-100/90 backdrop-blur-md border-t border-sage-100/50 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           <div className="max-w-md mx-auto px-4 h-20 flex items-center justify-around">
             <Link href="/" className="flex flex-col items-center gap-1.5 py-2 px-4 rounded-2xl transition-all duration-300 hover:bg-sage-50">
               <span className="text-xl">🏡</span>

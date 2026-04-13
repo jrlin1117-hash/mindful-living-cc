@@ -2,24 +2,26 @@
 
 import Link from 'next/link';
 import WeeklyCalendar from '@/components/WeeklyCalendar';
-import { getTodayStats, getTotalMindfulValue } from '@/lib/storage';
+import { getTodayStats, getTotalMindfulValue, getStreak } from '@/lib/storage';
 import { useEffect, useState } from 'react';
 
 export default function Home() {
   const [stats, setStats] = useState({ cardCount: 0, meditationCount: 0 });
   const [totalValue, setTotalValue] = useState(0);
+  const [streak, setStreak] = useState({ currentStreak: 0, longestStreak: 0 });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     setStats(getTodayStats());
     setTotalValue(getTotalMindfulValue());
+    setStreak(getStreak());
   }, []);
 
   return (
     <div className="max-w-md mx-auto px-5 pt-8 pb-4 page-enter">
       {/* 主标题区 */}
-      <div className="text-center py-10 space-y-4">
+      <div className="text-center py-8 space-y-3">
         <div className="relative inline-block">
           <span className="text-6xl animate-float-slow">🌱</span>
           <div className="absolute -top-2 -right-2 text-xl animate-breathe">✨</div>
@@ -28,14 +30,47 @@ export default function Home() {
           正念小森林
         </h1>
         <p className="text-sage-400 text-sm leading-relaxed max-w-xs mx-auto">
-          正念是一种生活态度
+          正念如植物，你悉心照料它
           <br />
-          一起来浇灌吧
+          它也会照顾好你
         </p>
       </div>
 
+      {/* 连续打卡 */}
+      {mounted && streak.currentStreak > 0 && (
+        <div className="card p-4 mb-6 text-center bg-gradient-to-br from-moss-50 to-sage-50">
+          <div className="flex items-center justify-center gap-3">
+            <span className="text-2xl">🔥</span>
+            <div>
+              <div className="text-2xl font-medium text-moss-600">
+                {streak.currentStreak}
+              </div>
+              <div className="text-xs text-sage-500">
+                天连续照顾自己
+              </div>
+            </div>
+          </div>
+          {streak.longestStreak > streak.currentStreak && (
+            <div className="text-xs text-sage-400 mt-1">
+              最长连续 {streak.longestStreak} 天
+            </div>
+          )}
+        </div>
+      )}
+
+      {mounted && streak.currentStreak === 0 && (
+        <div className="card p-4 mb-6 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-xl">🌱</span>
+            <span className="text-sm text-sage-500">
+              开始你的正念之旅
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 本周日历 */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-center justify-center gap-2 mb-4">
           <span className="text-sage-300">——</span>
           <h2 className="text-sm font-medium text-sage-400">最近一周</h2>
@@ -45,7 +80,7 @@ export default function Home() {
       </div>
 
       {/* 今日数据 */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="card text-center py-5 group hover:scale-[1.02] transition-all duration-300">
           <div className="text-3xl mb-2 group-hover:scale-110 transition-transform duration-300">💧</div>
           <div className="text-2xl font-medium text-moss-600 value-change">
@@ -59,6 +94,14 @@ export default function Home() {
             {mounted ? stats.meditationCount : '-'}
           </div>
           <div className="text-xs text-sage-400 mt-1">今日冥想</div>
+        </div>
+      </div>
+
+      {/* 总正念值 */}
+      <div className="card p-4 mb-6 text-center bg-gradient-to-br from-sage-100 to-moss-100">
+        <div className="text-sm text-sage-500 mb-1">森林总正念值</div>
+        <div className="text-3xl font-medium text-moss-600">
+          {mounted ? totalValue : '-'}
         </div>
       </div>
 
