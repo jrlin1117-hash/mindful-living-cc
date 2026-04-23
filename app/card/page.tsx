@@ -15,12 +15,124 @@ import {
   getToday,
   ATTITUDE_PALETTES,
   AttitudePalette,
-  generateStructuredSuggestion,
+  getPlantProgress,
+  getCelebrationMessage,
+  getPlantValues,
+  PlantProgress,
 } from '@/lib/storage';
+
+// ============ 成长庆祝弹窗组件 ============
+
+interface GrowthCelebrationModalProps {
+  attitude: MindfulnessAttitude;
+  previousScore: number;
+  newScore: number;
+  onClose: () => void;
+}
+
+function GrowthCelebrationModal({ attitude, previousScore, newScore, onClose }: GrowthCelebrationModalProps) {
+  const progress = getPlantProgress(newScore);
+  const celebrationMsg = getCelebrationMessage(attitude.plant, attitude.name, newScore, previousScore);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5 animate-fade-in">
+      {/* 背景遮罩 */}
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* 弹窗内容 */}
+      <div className="relative w-full max-w-sm bg-gradient-to-br from-sage-50 to-moss-50 rounded-3xl p-6 shadow-xl animate-scale-in">
+        {/* 关闭按钮 */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/60 text-sage-400 hover:text-sage-600 flex items-center justify-center transition-colors"
+        >
+          ✕
+        </button>
+
+        {/* 植物图标 */}
+        <div className="text-center mb-4">
+          <div
+            className="text-6xl mx-auto mb-2 transition-all duration-700"
+            style={{ transform: `scale(${progress.currentStage === 'mature' ? 1.3 : progress.currentStage === 'lush' ? 1.15 : progress.currentStage === 'growing' ? 1 : 0.85})` }}
+          >
+            {attitude.plantEmoji}
+          </div>
+          <div className="text-sm text-sage-500">{attitude.plant}</div>
+        </div>
+
+        {/* 阶段信息 */}
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/60 rounded-full">
+            <span className="text-lg">{progress.currentStage === 'mature' ? '✨' : progress.currentStage === 'lush' ? '🍃' : progress.currentStage === 'growing' ? '🌿' : '🌱'}</span>
+            <span className="text-sm font-medium text-sage-600">{progress.currentStageName}</span>
+          </div>
+        </div>
+
+        {/* 庆祝文案 */}
+        <div className="text-center mb-5">
+          <p className="text-moss-600 text-sm leading-relaxed">
+            {celebrationMsg}
+          </p>
+        </div>
+
+        {/* 进度条 */}
+        <div className="bg-white/60 rounded-2xl p-4 mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-sage-500">成长进度</span>
+            <span className="text-xs text-sage-600 font-medium">
+              {progress.currentScore} / {progress.nextStage ? progress.nextStageThreshold : progress.currentScore}
+            </span>
+          </div>
+
+          {/* 进度条轨道 */}
+          <div className="h-2 bg-sage-100 rounded-full overflow-hidden">
+            {/* 进度填充 */}
+            <div
+              className="h-full bg-gradient-to-r from-sage-300 to-moss-400 rounded-full transition-all duration-700"
+              style={{ width: `${progress.progressPercent}%` }}
+            />
+          </div>
+
+          {/* 阶段节点 */}
+          <div className="flex justify-between mt-2 text-xs text-sage-400">
+            <span>🌱</span>
+            <span>🌿</span>
+            <span>🍃</span>
+            <span>✨</span>
+          </div>
+        </div>
+
+        {/* 下一阶段提示 */}
+        {progress.nextStage && (
+          <div className="text-center mb-5 text-xs text-sage-400">
+            再积累 <span className="text-moss-500 font-medium">{progress.pointsToNext}</span> 次浇灌，将进入「{progress.nextStageName}」阶段
+          </div>
+        )}
+
+        {/* 已有浇灌次数 */}
+        <div className="text-center mb-5">
+          <div className="text-3xl font-medium text-moss-600">{newScore}</div>
+          <div className="text-xs text-sage-400">次浇灌</div>
+        </div>
+
+        {/* 关闭按钮 */}
+        <button
+          onClick={onClose}
+          className="w-full py-3 bg-moss-500 hover:bg-moss-600 text-white rounded-2xl text-sm font-medium transition-colors duration-300"
+        >
+          继续浇灌
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ============ 类型定义 ============
 
-type CardPhase = 'idle' | 'planning' | 'wallpaperReady' | 'actionPending' | 'completed';
+type CardPhase = 'idle' | 'selecting' | 'planning' | 'wallpaperReady' | 'actionPending' | 'completed';
 
 // 今日态度卡状态（用于 localStorage）
 interface TodayCardState {
@@ -208,6 +320,8 @@ export default function CardPage() {
   const [streak, setStreak] = useState({ currentStreak: 0 });
   const [mounted, setMounted] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [previousPlantScore, setPreviousPlantScore] = useState(0);
 
   // 初始化
   useEffect(() => {
@@ -293,10 +407,6 @@ export default function CardPage() {
     if (!cardState) return;
     const newAction = getRandomAction(cardState.cardIndex, currentAction);
     setCurrentAction(newAction);
-    // 如果用户还没输入自定义计划，同步更新
-    if (!userPlan) {
-      setUserPlan(newAction);
-    }
   };
 
   // 生成计划（进入壁纸生成阶段）
@@ -322,8 +432,8 @@ export default function CardPage() {
   // 真实手机壁纸比例：9:19.5 (接近 iPhone)
   // 顶部 20% 留安全区，底部 12% 留品牌区
 
-  const WALLPAPER_WIDTH = 1080;
-  const WALLPAPER_HEIGHT = 2340;
+  const WALLPAPER_WIDTH = 1179;
+  const WALLPAPER_HEIGHT = 2556;
 
   // 辅助函数：绘制圆角矩形
   const roundRect = (
@@ -343,7 +453,7 @@ export default function CardPage() {
     ctx.closePath();
   };
 
-  // 辅助函数：文本换行
+  // 辅助函数：文本换行（按字符宽度）
   const wrapText = (
     ctx: CanvasRenderingContext2D,
     text: string,
@@ -369,6 +479,34 @@ export default function CardPage() {
     return lines;
   };
 
+  // 辅助函数：智能文本换行（按字符宽度，返回最多指定行数）
+  const wrapTextSmart = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+    maxLines: number = 2
+  ): string[] => {
+    const chars = text.split('');
+    const lines: string[] = [];
+    let currentLine = '';
+
+    for (const char of chars) {
+      const testLine = currentLine + char;
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && currentLine.length > 0) {
+        lines.push(currentLine);
+        currentLine = char;
+        if (lines.length >= maxLines) break;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine.length > 0 && lines.length < maxLines) {
+      lines.push(currentLine);
+    }
+    return lines;
+  };
+
   // 绘制高清壁纸（真实手机壁纸布局）
   const generateWallpaperCanvas = (
     attitude: MindfulnessAttitude,
@@ -381,7 +519,7 @@ export default function CardPage() {
     canvas.height = h;
     const ctx = canvas.getContext('2d')!;
 
-    // 抗锯齿
+    // 高清渲染设置
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
@@ -391,95 +529,123 @@ export default function CardPage() {
     // ========== 背景（使用态度专属配色）==========
     const bgGradient = ctx.createLinearGradient(0, 0, w, h);
     bgGradient.addColorStop(0, palette.bgStart);
-    bgGradient.addColorStop(0.5, palette.bgEnd);
+    bgGradient.addColorStop(0.4, palette.bgEnd);
     bgGradient.addColorStop(1, palette.bgEnd);
     ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, w, h);
 
     // 右上角柔和光晕
-    const topGlow = ctx.createRadialGradient(w, 0, 0, w, 0, w * 0.7);
-    topGlow.addColorStop(0, palette.accent + '20');
-    topGlow.addColorStop(0.5, palette.accent + '08');
+    const topGlow = ctx.createRadialGradient(w, 0, 0, w, 0, w * 0.75);
+    topGlow.addColorStop(0, palette.accent + '25');
+    topGlow.addColorStop(0.4, palette.accent + '10');
     topGlow.addColorStop(1, 'transparent');
     ctx.fillStyle = topGlow;
     ctx.fillRect(0, 0, w, h);
 
     // 左下角柔和光晕
-    const bottomGlow = ctx.createRadialGradient(0, h, 0, 0, h, w * 0.6);
-    bottomGlow.addColorStop(0, palette.accent + '18');
-    bottomGlow.addColorStop(0.6, palette.accent + '05');
+    const bottomGlow = ctx.createRadialGradient(0, h, 0, 0, h, w * 0.65);
+    bottomGlow.addColorStop(0, palette.accent + '20');
+    bottomGlow.addColorStop(0.5, palette.accent + '08');
     bottomGlow.addColorStop(1, 'transparent');
     ctx.fillStyle = bottomGlow;
     ctx.fillRect(0, 0, w, h);
 
-    // ========== 区域 2：标题区（给顶部状态栏留足空间）============
-    const titleY = h * 0.32;
+    // ========== 区域 1：标题区（给顶部状态栏留足空间）============
+    const titleY = h * 0.28;
 
     // 小标签：今日态度
     ctx.fillStyle = palette.accent;
-    ctx.font = `600 ${w * 0.032}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.font = `600 ${Math.round(w * 0.03)}px -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillText('今日态度', w / 2, titleY);
 
     // 主标题：态度名称
     ctx.fillStyle = palette.titleColor;
-    ctx.font = `bold ${w * 0.11}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    ctx.fillText(attitude.name, w / 2, titleY + h * 0.07);
+    ctx.font = `bold ${Math.round(w * 0.1)}px -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+    ctx.fillText(attitude.name, w / 2, titleY + h * 0.065);
 
-    // ========== 区域 3：植物视觉主体（画面中部）============
-    const plantY = h * 0.52;
+    // ========== 区域 2：植物视觉主体（画面中部）============
+    const plantY = h * 0.48;
 
-    // 植物 emoji
-    const emojiSize = Math.round(w * 0.35);
+    // 植物 emoji - 缩小为原来的 50%，使用更高分辨率渲染
+    const emojiSize = Math.round(w * 0.175);
     ctx.font = `${emojiSize}px -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(attitude.plantEmoji, w / 2, plantY);
 
-    // 植物名称
+    // 植物名称 - 增加与 emoji 的间距
     ctx.fillStyle = palette.accent;
-    ctx.font = `500 ${w * 0.045}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    ctx.fillText(attitude.plant, w / 2, plantY + h * 0.09);
+    ctx.font = `500 ${Math.round(w * 0.042)}px -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+    ctx.fillText(attitude.plant, w / 2, plantY + h * 0.115);
 
-    // ========== 区域 4：行动计划卡片（画面下半部分）============
-    const cardW = w * 0.8;
-    const cardH = h * 0.18;
+    // ========== 区域 3：行动计划卡片（画面下半部分）============
+    const cardW = w * 0.82;
+    const cardH = h * 0.175; // 缩短1/8
     const cardX = (w - cardW) / 2;
-    const cardY = h * 0.68;
-    const cardRadius = w * 0.04;
+    const cardY = h * 0.675; // 稍微上移
+    const cardRadius = w * 0.038;
 
     // 卡片半透明背景
     ctx.fillStyle = palette.cardBg;
     roundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
     ctx.fill();
 
-    // 卡片内边距
-    const contentW = cardW - w * 0.12;
-
     // 行动计划标签
     ctx.fillStyle = palette.subtle;
-    ctx.font = `500 ${w * 0.028}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.font = `500 ${Math.round(w * 0.026)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('今日行动', w / 2, cardY + h * 0.04);
+    ctx.fillText('今日行动', w / 2, cardY + h * 0.038);
 
-    // 行动计划内容（限制 3 行）
+    // ========== 行动计划内容 - 按中文逗号换行 ==========
     ctx.fillStyle = palette.cardText;
-    const actionFontSize = w * 0.038;
-    ctx.font = `${actionFontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    const lineHeight = actionFontSize * 1.7;
-    const lines = wrapText(ctx, actionPlan, contentW * 0.95);
-    const maxLines = 3;
-    const displayLines = lines.slice(0, maxLines);
-    const textStartY = cardY + h * 0.1;
-    displayLines.forEach((line, i) => {
-      ctx.fillText(line, w / 2, textStartY + i * lineHeight);
+    const actionFontSize = Math.round(w * 0.036);
+    ctx.font = `${actionFontSize}px -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+
+    // 拆分策略：按中文逗号"，"分割，最多2行
+    let actionLines: string[] = [];
+    if (actionPlan.includes('，')) {
+      const parts = actionPlan.split('，');
+      // 第一部分
+      const firstPart = parts[0];
+      // 如果第一行太长，再按字符宽度换行
+      const maxActionWidth = cardW * 0.88;
+      if (ctx.measureText(firstPart).width > maxActionWidth) {
+        // 按字符宽度换行
+        const wrapped = wrapTextSmart(ctx, firstPart, maxActionWidth);
+        actionLines.push(wrapped[0] || '');
+        if (wrapped[1]) actionLines.push(wrapped[1]);
+      } else {
+        actionLines.push(firstPart);
+      }
+      // 第二部分（如果有）
+      if (parts[1]) {
+        actionLines.push(parts[1]);
+      }
+    } else {
+      // 没有逗号，按字符宽度换行（最多2行）
+      const maxActionWidth = cardW * 0.88;
+      const wrapped = wrapTextSmart(ctx, actionPlan, maxActionWidth);
+      actionLines = wrapped.slice(0, 2);
+    }
+
+    // 确保最多2行
+    actionLines = actionLines.slice(0, 2);
+
+    // 计算垂直位置（居中偏上一点）
+    const lineHeightAction = actionFontSize * 1.75;
+    const totalTextHeight = actionLines.length * lineHeightAction;
+    const textStartYAction = cardY + h * 0.055 + actionFontSize + (h * 0.075 - totalTextHeight) / 2;
+
+    actionLines.forEach((line, i) => {
+      ctx.fillText(line, w / 2, textStartYAction + i * lineHeightAction);
     });
 
-    // ========== 区域 5：底部品牌区 ==========
+    // ========== 区域 4：底部品牌区 ==========
     ctx.fillStyle = palette.subtle + '99';
-    ctx.font = `500 ${w * 0.025}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.font = `500 ${Math.round(w * 0.023)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('正念小森林', w / 2, h * 0.9);
+    ctx.fillText('正念小森林', w / 2, h * 0.895);
 
     return canvas.toDataURL('image/png', 1.0);
   };
@@ -516,6 +682,11 @@ export default function CardPage() {
     }
   };
 
+  // 跳过保存壁纸，直接进入打卡
+  const handleSkipWallpaper = () => {
+    setPhase('actionPending');
+  };
+
   // 返回修改计划
   const handleBackToEdit = () => {
     setPhase('planning');
@@ -525,8 +696,21 @@ export default function CardPage() {
   const handleComplete = () => {
     if (!cardState) return;
 
+    const attitude = ATTITUDES[cardState.cardIndex];
+
+    // 获取浇灌前的分数（用于显示成长）
+    const plantValues = getPlantValues();
+    const prevScore = plantValues[attitude.plant] || 0;
+
     // 保存感受
     completeCard(cardState.drawTime, feeling);
+
+    // 获取浇灌后的分数
+    const newPlantValues = getPlantValues();
+    const newScore = newPlantValues[attitude.plant] || 0;
+
+    // 保存分数供弹窗使用
+    setPreviousPlantScore(prevScore);
 
     // 更新状态
     const updatedState: TodayCardState = {
@@ -537,6 +721,9 @@ export default function CardPage() {
     saveTodayCardState(updatedState);
     setCardState(updatedState);
     setPhase('completed');
+
+    // 显示成长庆祝弹窗
+    setShowCelebration(true);
   };
 
   // 再练习一次
@@ -552,12 +739,17 @@ export default function CardPage() {
 
   // 返回键
   const handleGoBack = () => {
-    if (cardState?.hasSavedWallpaper && !cardState?.isCompleted) {
+    if (phase === 'completed') {
+      setPhase('idle');
+    } else if (cardState?.hasSavedWallpaper && !cardState?.isCompleted) {
       setPhase('actionPending');
     } else if (cardState?.hasGeneratedPlan && !cardState?.hasSavedWallpaper) {
       setPhase('wallpaperReady');
+    } else if (phase === 'planning' && cardState && !cardState.hasGeneratedPlan) {
+      // 从选择态度进来的，还没生成计划，可以返回重新选择
+      setPhase('selecting');
     } else {
-      setPhase('planning');
+      setPhase('idle');
     }
   };
 
@@ -637,11 +829,41 @@ export default function CardPage() {
             </button>
 
             <button
-              onClick={() => {/* 暂时隐藏选择器 */}}
+              onClick={() => setPhase('selecting')}
               className="w-full py-3 text-sm text-sage-500 hover:text-moss-600 transition-colors duration-300"
             >
               我想练习某种态度
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========== Phase: Selecting（选择态度阶段） ========== */}
+      {phase === 'selecting' && (
+        <div className="space-y-4 animate-scale-in">
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-medium text-sage-700 mb-2">选择你想练习的态度</h2>
+            <p className="text-sm text-sage-400">点击其中一张，进入今天的练习</p>
+          </div>
+
+          <button
+            onClick={() => setPhase('idle')}
+            className="w-full py-3 text-sm text-sage-500 hover:text-moss-600 transition-colors duration-300"
+          >
+            ← 返回
+          </button>
+
+          <div className="grid grid-cols-3 gap-3">
+            {ATTITUDES.map((att, index) => (
+              <button
+                key={att.name}
+                onClick={() => handleSelectAttitude(index)}
+                className={`bg-gradient-to-br ${att.gradient} rounded-2xl p-4 text-center hover:scale-105 transition-all duration-300 shadow-soft`}
+              >
+                <div className="text-3xl mb-1">{att.plantEmoji}</div>
+                <div className="text-xs font-medium text-sage-600">{att.name}</div>
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -742,13 +964,20 @@ export default function CardPage() {
                   导出中...
                 </>
               ) : (
-                <>📥 保存到本地</>
+                <>📥 保存壁纸到本地</>
               )}
             </button>
 
             <button
-              onClick={handleBackToEdit}
+              onClick={handleSkipWallpaper}
               className="w-full py-3 text-sm text-sage-500 hover:text-sage-600 transition-colors duration-300"
+            >
+              暂不保存，直接进入打卡
+            </button>
+
+            <button
+              onClick={handleBackToEdit}
+              className="w-full py-3 text-sm text-sage-300 hover:text-sage-500 transition-colors duration-300"
             >
               ← 返回修改计划
             </button>
@@ -766,9 +995,9 @@ export default function CardPage() {
               今日行动已准备好
             </h2>
             <p className="text-sm text-sage-500 leading-relaxed">
-              这张壁纸会陪你完成今天的练习<br/>
-              去生活里轻轻实践，晚些时候再回来看看自己<br/>
-              今天的种子已经种下了
+              你可以把这张壁纸设置为手机屏保<br/>
+              随时提醒自己把正念融入生活<br/>
+              晚些时候再回来记录感受吧
             </p>
           </div>
 
@@ -877,6 +1106,16 @@ export default function CardPage() {
           🌳 去看看我的森林 →
         </Link>
       </div>
+
+      {/* 成长庆祝弹窗 */}
+      {showCelebration && attitude && (
+        <GrowthCelebrationModal
+          attitude={attitude}
+          previousScore={previousPlantScore}
+          newScore={(getPlantValues()[attitude.plant] || 0)}
+          onClose={() => setShowCelebration(false)}
+        />
+      )}
     </div>
   );
 }
