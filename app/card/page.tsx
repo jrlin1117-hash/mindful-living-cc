@@ -34,12 +34,23 @@ function GrowthCelebrationModal({ attitude, previousScore, newScore, onClose }: 
   const progress = getPlantProgress(newScore);
   const celebrationMsg = getCelebrationMessage(attitude.plant, attitude.name, newScore, previousScore);
 
+  // ESC 键关闭
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5 animate-fade-in">
       {/* 背景遮罩 */}
       <div
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
       />
 
       {/* 弹窗内容 */}
@@ -47,7 +58,7 @@ function GrowthCelebrationModal({ attitude, previousScore, newScore, onClose }: 
         {/* 关闭按钮 */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/60 text-sage-400 hover:text-sage-600 flex items-center justify-center transition-colors"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/60 text-sage-400 hover:text-sage-600 flex items-center justify-center transition-colors cursor-pointer"
         >
           ✕
         </button>
@@ -83,15 +94,15 @@ function GrowthCelebrationModal({ attitude, previousScore, newScore, onClose }: 
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-sage-500">成长进度</span>
             <span className="text-xs text-sage-600 font-medium">
-              {progress.currentScore} / {progress.nextStage ? progress.nextStageThreshold : progress.currentScore}
+              {Math.min(progress.currentScore, 10)} / 10
             </span>
           </div>
 
           {/* 进度条轨道 */}
-          <div className="h-2 bg-sage-100 rounded-full overflow-hidden">
+          <div className="h-2.5 bg-sage-100 rounded-full overflow-hidden">
             {/* 进度填充 */}
             <div
-              className="h-full bg-gradient-to-r from-sage-300 to-moss-400 rounded-full transition-all duration-700"
+              className="h-full bg-gradient-to-r from-moss-400 to-sage-500 rounded-full transition-all duration-700"
               style={{ width: `${progress.progressPercent}%` }}
             />
           </div>
@@ -107,24 +118,10 @@ function GrowthCelebrationModal({ attitude, previousScore, newScore, onClose }: 
 
         {/* 下一阶段提示 */}
         {progress.nextStage && (
-          <div className="text-center mb-5 text-xs text-sage-400">
+          <div className="text-center text-xs text-sage-400">
             再积累 <span className="text-moss-500 font-medium">{progress.pointsToNext}</span> 次浇灌，将进入「{progress.nextStageName}」阶段
           </div>
         )}
-
-        {/* 已有浇灌次数 */}
-        <div className="text-center mb-5">
-          <div className="text-3xl font-medium text-moss-600">{newScore}</div>
-          <div className="text-xs text-sage-400">次浇灌</div>
-        </div>
-
-        {/* 关闭按钮 */}
-        <button
-          onClick={onClose}
-          className="w-full py-3 bg-moss-500 hover:bg-moss-600 text-white rounded-2xl text-sm font-medium transition-colors duration-300"
-        >
-          继续浇灌
-        </button>
       </div>
     </div>
   );
@@ -149,6 +146,13 @@ interface TodayCardState {
 const CARD_STATE_KEY = 'mindful_forest_today_card_state';
 
 // ============ 辅助函数 ============
+
+// 判断是否在微信内置浏览器
+function isWeChatBrowser(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent.toLowerCase();
+  return ua.includes('micromessenger');
+}
 
 function getTodayCardState(): TodayCardState | null {
   if (typeof window === 'undefined') return null;
@@ -322,6 +326,8 @@ export default function CardPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const [previousPlantScore, setPreviousPlantScore] = useState(0);
+  const [showWallpaperPreview, setShowWallpaperPreview] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState('');
 
   // 初始化
   useEffect(() => {
@@ -659,7 +665,15 @@ export default function CardPage() {
     try {
       const dataUrl = generateWallpaperCanvas(attitude, currentAction);
 
-      // 创建下载链接
+      // 微信内置浏览器：显示预览层，引导长按保存
+      if (isWeChatBrowser()) {
+        setPreviewImageUrl(dataUrl);
+        setShowWallpaperPreview(true);
+        setIsExporting(false);
+        return;
+      }
+
+      // 普通浏览器：直接下载
       const link = document.createElement('a');
       link.download = `正念小森林-${attitude.name}-${getToday()}.png`;
       link.href = dataUrl;
@@ -1115,6 +1129,88 @@ export default function CardPage() {
           newScore={(getPlantValues()[attitude.plant] || 0)}
           onClose={() => setShowCelebration(false)}
         />
+      )}
+
+      {/* 微信壁纸预览弹窗 */}
+      {showWallpaperPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+          {/* 半透明遮罩 */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              // 关闭遮罩时更新状态并进入下一阶段
+              if (cardState && !cardState.hasSavedWallpaper) {
+                const updatedState: TodayCardState = {
+                  ...cardState,
+                  hasSavedWallpaper: true,
+                };
+                saveTodayCardState(updatedState);
+                setCardState(updatedState);
+                setPhase('actionPending');
+              }
+              setShowWallpaperPreview(false);
+            }}
+          />
+
+          {/* 预览内容 */}
+          <div className="relative w-full max-w-sm flex flex-col items-center">
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => {
+                if (cardState && !cardState.hasSavedWallpaper) {
+                  const updatedState: TodayCardState = {
+                    ...cardState,
+                    hasSavedWallpaper: true,
+                  };
+                  saveTodayCardState(updatedState);
+                  setCardState(updatedState);
+                  setPhase('actionPending');
+                }
+                setShowWallpaperPreview(false);
+              }}
+              className="absolute -top-12 right-0 w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/30 transition-colors"
+            >
+              ✕
+            </button>
+
+            {/* 高清壁纸图片 */}
+            <img
+              src={previewImageUrl}
+              alt="正念壁纸预览"
+              className="w-full rounded-2xl shadow-2xl"
+              style={{ maxHeight: '70vh', objectFit: 'contain' }}
+            />
+
+            {/* 提示卡片 */}
+            <div className="mt-4 bg-white/95 backdrop-blur-sm rounded-2xl px-6 py-4 shadow-lg text-center">
+              <p className="text-sage-700 text-sm font-medium mb-1">
+                长按图片保存到相册
+              </p>
+              <p className="text-sage-400 text-xs">
+                保存后可设为手机壁纸
+              </p>
+            </div>
+
+            {/* 已完成按钮 */}
+            <button
+              onClick={() => {
+                if (cardState && !cardState.hasSavedWallpaper) {
+                  const updatedState: TodayCardState = {
+                    ...cardState,
+                    hasSavedWallpaper: true,
+                  };
+                  saveTodayCardState(updatedState);
+                  setCardState(updatedState);
+                  setPhase('actionPending');
+                }
+                setShowWallpaperPreview(false);
+              }}
+              className="mt-3 px-6 py-2 bg-sage-500 hover:bg-sage-600 text-white text-sm rounded-full transition-colors"
+            >
+              已保存，继续 →
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

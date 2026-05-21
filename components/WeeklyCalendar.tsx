@@ -10,7 +10,16 @@ interface DayStatus {
   isToday: boolean;
 }
 
-export default function WeeklyCalendar() {
+// 从记录中提取日期字符串
+function getRecordDate(record: { date?: string; completedAt?: string }): string {
+  return record.date || record.completedAt?.slice(0, 10) || '';
+}
+
+interface WeeklyCalendarProps {
+  onExpand?: () => void;
+}
+
+export default function WeeklyCalendar({ onExpand }: WeeklyCalendarProps) {
   const [days, setDays] = useState<DayStatus[]>([]);
   const [mounted, setMounted] = useState(false);
 
@@ -32,12 +41,14 @@ export default function WeeklyCalendar() {
   const getDayStatus = (date: string): { hasCard: boolean; hasMeditation: boolean } => {
     if (typeof window === 'undefined') return { hasCard: false, hasMeditation: false };
 
-    const cardRecords = JSON.parse(localStorage.getItem('mindful_forest_card_records') || '[]');
+    // 态度卡记录（完整格式）
+    const cardRecords = JSON.parse(localStorage.getItem('mindful_forest_card_completions_full') || '[]');
+    // 冥想记录
     const meditationRecords = JSON.parse(localStorage.getItem('mindful_forest_meditation_records') || '[]');
 
     return {
-      hasCard: cardRecords.some((r: any) => r.date === date && r.completed),
-      hasMeditation: meditationRecords.some((r: any) => r.date === date && r.completed),
+      hasCard: cardRecords.some((r: any) => getRecordDate(r) === date),
+      hasMeditation: meditationRecords.some((r: any) => getRecordDate(r) === date),
     };
   };
 
@@ -55,20 +66,22 @@ export default function WeeklyCalendar() {
 
   if (!mounted) {
     return (
-      <div className="flex justify-between items-start">
-        {[...Array(7)].map((_, i) => (
-          <div key={i} className="flex flex-col items-center gap-2">
-            <div className="w-6 h-4 bg-sage-100 rounded animate-pulse" />
-            <div className="w-12 h-12 bg-sage-50 rounded-2xl animate-pulse" />
-            <div className="w-4 h-4 bg-sage-100 rounded-full animate-pulse" />
-          </div>
-        ))}
+      <div className="card p-5">
+        <div className="flex justify-between items-start">
+          {[...Array(7)].map((_, i) => (
+            <div key={i} className="flex flex-col items-center gap-2">
+              <div className="w-6 h-4 bg-sage-100 rounded animate-pulse" />
+              <div className="w-12 h-12 bg-sage-50 rounded-2xl animate-pulse" />
+              <div className="w-4 h-4 bg-sage-100 rounded-full animate-pulse" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="card p-5">
+    <div className="card p-5 cursor-pointer hover:shadow-soft transition-all duration-300" onClick={onExpand}>
       <div className="flex justify-between items-start">
         {days.map((day, index) => {
           const { hasCard, hasMeditation } = getDayStatus(day.date);
@@ -110,18 +123,12 @@ export default function WeeklyCalendar() {
                 )}
               </div>
 
-              {/* 状态指示器 */}
-              <div className="h-5 flex items-center justify-center">
-                {hasMeditation ? (
-                  <div className="flex items-center gap-1 px-2 py-1 bg-softteal-50 rounded-full animate-breathe">
-                    <span className="text-xs">🍀</span>
-                  </div>
-                ) : hasCard ? (
-                  <div className="flex items-center px-2 py-1 bg-sage-50 rounded-full">
-                    <span className="text-xs">💧</span>
-                  </div>
-                ) : (
-                  <div className="w-2 h-2 rounded-full bg-sage-200" />
+              {/* 状态指示器：同时显示态度卡和冥想 */}
+              <div className="h-5 flex items-center justify-center gap-1">
+                {hasCard && <span className="text-sm">🌈</span>}
+                {hasMeditation && <span className="text-sm">🧘</span>}
+                {!hasCard && !hasMeditation && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-sage-200" />
                 )}
               </div>
             </div>
@@ -129,23 +136,25 @@ export default function WeeklyCalendar() {
         })}
       </div>
 
-      {/* 图例 */}
-      <div className="flex justify-center gap-6 mt-4 pt-4 border-t border-sage-100">
+      {/* 图例 + 展开提示 */}
+      <div className="flex justify-center items-center gap-4 mt-4 pt-4 border-t border-sage-100">
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-sage-200" />
+          <div className="w-1.5 h-1.5 rounded-full bg-sage-200" />
           <span className="text-xs text-sage-400">暂无记录</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-5 h-3 bg-sage-50 rounded-full flex items-center justify-center">
-            <span className="text-xs">💧</span>
-          </div>
+          <span className="text-xs">🌈</span>
           <span className="text-xs text-sage-400">态度卡</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-5 h-3 bg-softteal-50 rounded-full flex items-center justify-center">
-            <span className="text-xs">🍀</span>
-          </div>
+          <span className="text-xs">🧘</span>
           <span className="text-xs text-sage-400">冥想</span>
+        </div>
+        <div className="flex items-center gap-1 text-xs text-sage-300">
+          <span>点击展开</span>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+          </svg>
         </div>
       </div>
     </div>

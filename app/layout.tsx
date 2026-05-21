@@ -25,7 +25,7 @@ export default function RootLayout({
         <nav className="fixed top-0 left-0 right-0 z-50 bg-cream-100/80 backdrop-blur-md border-b border-sage-100/50">
           <div className="max-w-md mx-auto px-5 h-16 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2 group">
-              <span className="text-2xl group-hover:scale-110 transition-transform duration-300">🌱</span>
+              <span className="text-2xl group-hover:scale-110 transition-transform duration-300">🌲</span>
               <span className="font-medium text-sage-700 group-hover:text-moss-600 transition-colors duration-300">
                 正念小森林
               </span>
@@ -51,22 +51,18 @@ export default function RootLayout({
 
         {/* 底部导航 */}
         <nav className="fixed bottom-0 left-0 right-0 z-50 bg-cream-100/90 backdrop-blur-md border-t border-sage-100/50 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div className="max-w-md mx-auto px-4 h-20 flex items-center justify-around">
-            <Link href="/" className="flex flex-col items-center gap-1.5 py-2 px-4 rounded-2xl transition-all duration-300 hover:bg-sage-50">
-              <span className="text-xl">🏡</span>
-              <span className="text-xs text-sage-600">首页</span>
+          <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-around">
+            <Link href="/" className="w-12 h-12 flex items-center justify-center rounded-full transition-all duration-300 hover:bg-sage-100">
+              <span className="text-2xl">🏡</span>
             </Link>
-            <Link href="/card" className="flex flex-col items-center gap-1.5 py-2 px-4 rounded-2xl transition-all duration-300 hover:bg-sage-50">
-              <span className="text-xl">🎴</span>
-              <span className="text-xs text-sage-600">态度卡</span>
+            <Link href="/card" className="w-12 h-12 flex items-center justify-center rounded-full transition-all duration-300 hover:bg-sage-100">
+              <span className="text-2xl">🎴</span>
             </Link>
-            <Link href="/meditation" className="flex flex-col items-center gap-1.5 py-2 px-4 rounded-2xl transition-all duration-300 hover:bg-sage-50">
-              <span className="text-xl">🧘</span>
-              <span className="text-xs text-sage-600">冥想</span>
+            <Link href="/meditation" className="w-12 h-12 flex items-center justify-center rounded-full transition-all duration-300 hover:bg-sage-100">
+              <span className="text-2xl">🧘</span>
             </Link>
-            <Link href="/forest" className="flex flex-col items-center gap-1.5 py-2 px-4 rounded-2xl transition-all duration-300 hover:bg-sage-50">
-              <span className="text-xl">🌳</span>
-              <span className="text-xs text-sage-600">森林</span>
+            <Link href="/forest" className="w-12 h-12 flex items-center justify-center rounded-full transition-all duration-300 hover:bg-sage-100">
+              <span className="text-2xl">🌲</span>
             </Link>
           </div>
         </nav>

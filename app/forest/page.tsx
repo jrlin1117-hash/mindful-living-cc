@@ -7,7 +7,6 @@ import {
   getPlantValues,
   getTodayStats,
   getTotalMindfulValue,
-  getRecentRecords,
   resetAllData,
   getGrowthInfo,
   GrowthInfo,
@@ -35,7 +34,6 @@ export default function ForestPage() {
   const [plants, setPlants] = useState<PlantDisplay[]>([]);
   const [totalValue, setTotalValue] = useState(0);
   const [todayStats, setTodayStats] = useState({ cardCount: 0, meditationCount: 0 });
-  const [recentRecords, setRecentRecords] = useState<Array<{ type: 'card' | 'meditation'; date: string; content: string; plant?: string }>>([]);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [expandedPlant, setExpandedPlant] = useState<ExpandedPlant | null>(null);
@@ -56,7 +54,6 @@ export default function ForestPage() {
     setPlants(plantDisplays);
     setTotalValue(getTotalMindfulValue());
     setTodayStats(getTodayStats());
-    setRecentRecords(getRecentRecords());
     setStreak(getStreak());
   };
 
@@ -73,18 +70,7 @@ export default function ForestPage() {
   };
 
   const handlePlantClick = (plant: PlantDisplay) => {
-    if (expandedPlant?.attitude.name === plant.attitude.name) {
-      setExpandedPlant(null);
-    } else {
-      setExpandedPlant(plant);
-    }
-  };
-
-  const formatDate = (dateStr: string): string => {
-    const date = new Date(dateStr);
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    return `${month}/${day}`;
+    setExpandedPlant(plant);
   };
 
   const getPlantVisualSize = (info: GrowthInfo): string => {
@@ -132,102 +118,12 @@ export default function ForestPage() {
         )}
       </div>
 
-      {/* 展开的植物详情 */}
-      {expandedPlant && (() => {
-        const progress = getPlantProgress(expandedPlant.value);
-        return (
-          <div className="card p-5 mb-5 bg-gradient-to-br from-white to-cream-100 animate-scale-in">
-            <div className="flex items-start gap-4">
-              <div className="text-5xl">{expandedPlant.attitude.plantEmoji}</div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <h3 className="font-medium text-sage-700 text-lg">{expandedPlant.attitude.plant}</h3>
-                    <p className="text-sm text-moss-600">{expandedPlant.attitude.name}</p>
-                  </div>
-                  <button
-                    onClick={() => setExpandedPlant(null)}
-                    className="text-sage-400 hover:text-sage-600 transition-colors"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-xs text-sage-400 mb-1">态度释义</div>
-                    <p className="text-sm text-sage-600">{expandedPlant.attitude.meaning}</p>
-                  </div>
-
-                  <div>
-                    <div className="text-xs text-sage-400 mb-1">为什么是 {expandedPlant.attitude.plant}？</div>
-                    <p className="text-sm text-sage-600 italic">
-                      "{expandedPlant.attitude.plantReason}"
-                    </p>
-                  </div>
-
-                  {/* 成长进度条 */}
-                  <div className="bg-sage-50/80 rounded-xl p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{progress.currentStage === 'mature' ? '✨' : progress.currentStage === 'lush' ? '🍃' : progress.currentStage === 'growing' ? '🌿' : '🌱'}</span>
-                        <span className="text-sm font-medium text-sage-600">{progress.currentStageName}</span>
-                      </div>
-                      <span className="text-xs text-sage-400">
-                        {progress.currentScore} / {progress.nextStage ? progress.nextStageThreshold : progress.currentScore}
-                      </span>
-                    </div>
-
-                    {/* 进度条 */}
-                    <div className="h-2 bg-white rounded-full overflow-hidden mb-2">
-                      <div
-                        className="h-full bg-gradient-to-r from-sage-300 to-moss-400 rounded-full transition-all duration-500"
-                        style={{ width: `${progress.progressPercent}%` }}
-                      />
-                    </div>
-
-                    {/* 阶段节点 */}
-                    <div className="flex justify-between text-xs text-sage-400">
-                      <span>🌱</span>
-                      <span>🌿</span>
-                      <span>🍃</span>
-                      <span>✨</span>
-                    </div>
-
-                    {/* 下一阶段提示 */}
-                    {progress.nextStage && (
-                      <div className="mt-2 text-xs text-sage-500 text-center">
-                        再积累 <span className="text-moss-500 font-medium">{progress.pointsToNext}</span> 次浇灌，进入「{progress.nextStageName}」
-                      </div>
-                    )}
-                    {progress.currentStage === 'mature' && (
-                      <div className="mt-2 text-xs text-moss-500 text-center">
-                        🌟 这株植物已经绽放！
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-4 pt-2">
-                    <div className="text-center">
-                      <div className="text-xl font-medium text-moss-600">{expandedPlant.value}</div>
-                      <div className="text-xs text-sage-400">正念值</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl">{expandedPlant.growthInfo.emoji}</div>
-                      <div className="text-xs text-sage-400">{expandedPlant.growthInfo.stage === 'mature' ? '成熟' : expandedPlant.growthInfo.stage === 'lush' ? '茂盛' : expandedPlant.growthInfo.stage === 'growing' ? '生长中' : '幼苗'}</div>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-sage-500 italic">
-                        "{expandedPlant.message}"
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* 7天归零规则提示 */}
+      <div className="mb-5 px-3 py-3 bg-amber-50/60 rounded-2xl border border-amber-100/50">
+        <p className="text-xs text-amber-600/80 text-center leading-relaxed">
+          💡 如果一株植物连续 <span className="font-medium text-amber-600">7 天</span>没有被照料，它会回到初始状态，等待你重新浇灌
+        </p>
+      </div>
 
       {/* 森林网格 */}
       <div className="mb-6">
@@ -240,16 +136,13 @@ export default function ForestPage() {
         <div className="grid grid-cols-3 gap-3">
           {plants.map((plant, index) => {
             const { attitude, value, growthInfo } = plant;
-            const isExpanded = expandedPlant?.attitude.name === attitude.name;
             const progress = getPlantProgress(value);
 
             return (
               <button
                 key={attitude.name}
                 onClick={() => handlePlantClick(plant)}
-                className={`rounded-3xl p-3 bg-gradient-to-br ${attitude.gradient} transition-all duration-500 cursor-pointer text-left
-                  ${isExpanded ? 'ring-2 ring-moss-400 scale-105' : 'hover:scale-102'}
-                `}
+                className={`rounded-3xl p-3 bg-gradient-to-br ${attitude.gradient} transition-all duration-500 cursor-pointer text-left hover:scale-102`}
                 style={{
                   minHeight: `${100 + growthInfo.scale * 30}px`,
                   animationDelay: `${index * 0.05}s`,
@@ -280,9 +173,9 @@ export default function ForestPage() {
 
                 {/* 进度条 */}
                 <div className="mt-2">
-                  <div className="h-1 bg-white/30 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-sage-200/50 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-white/70 rounded-full transition-all duration-500"
+                      className="h-full bg-gradient-to-r from-moss-400 to-sage-500 rounded-full transition-all duration-500"
                       style={{ width: `${progress.progressPercent}%` }}
                     />
                   </div>
@@ -293,64 +186,51 @@ export default function ForestPage() {
         </div>
       </div>
 
-      {/* 最近记录 */}
-      <div className="card p-5 mb-6">
-        <h2 className="text-sm font-medium text-sage-400 mb-4">最近浇灌</h2>
-        {recentRecords.length > 0 ? (
-          <div className="space-y-3">
-            {recentRecords.map((record, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between py-2 border-b border-sage-50 last:border-0"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">{record.plant || (record.type === 'card' ? '💧' : '🧘')}</span>
-                  <div>
-                    <div className="text-sm text-sage-700">{record.content}</div>
-                    <div className="text-xs text-sage-400">{formatDate(record.date)}</div>
-                  </div>
-                </div>
-                <span className="text-xs text-sage-300">
-                  {record.type === 'card' ? '态度卡' : '冥想'}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <div className="text-4xl mb-3 opacity-30">🌱</div>
-            <p className="text-sm text-sage-400">还没有记录</p>
-            <p className="text-xs text-sage-300 mt-1">开始你的正念之旅吧</p>
-          </div>
-        )}
-      </div>
-
       {/* 成长阶段说明 */}
       <div className="text-center mb-6">
-        <p className="text-xs text-sage-400 mb-3">成长阶段</p>
+        <p className="text-xs text-sage-400 mb-3">成长阶段 · 每株植物满分 10 分</p>
         <div className="flex justify-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5 text-xs text-sage-400">
             <span>🌱</span>
             <span>幼苗</span>
-            <span className="text-sage-300">0-2</span>
+            <span className="text-sage-300">0–2</span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-sage-400">
             <span>🌿</span>
             <span>生长</span>
-            <span className="text-sage-300">3-5</span>
+            <span className="text-sage-300">3–5</span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-sage-400">
             <span>🍃</span>
             <span>茂盛</span>
-            <span className="text-sage-300">6-9</span>
+            <span className="text-sage-300">6–9</span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-sage-400">
             <span>✨</span>
             <span>成熟</span>
-            <span className="text-sage-300">10+</span>
+            <span className="text-sage-300">10</span>
           </div>
         </div>
       </div>
+
+      {/* 查看过往记录入口 */}
+      <Link
+        href="/records"
+        className="block w-full py-4 px-5 mb-4 bg-gradient-to-br from-white to-cream-50 rounded-2xl border border-sage-100 hover:border-sage-200 hover:shadow-soft transition-all duration-300"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📖</span>
+            <div className="text-left">
+              <div className="text-sm font-medium text-sage-700">查看浇灌记录</div>
+              <div className="text-xs text-sage-400 mt-0.5">回看你曾经浇灌森林的时刻</div>
+            </div>
+          </div>
+          <svg className="w-5 h-5 text-sage-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </Link>
 
       {/* 重置确认 */}
       {showResetConfirm ? (
@@ -407,6 +287,134 @@ export default function ForestPage() {
           森林记住了你的每一次觉察
         </p>
       </div>
+
+      {/* 植物详情弹窗 */}
+      {expandedPlant && (
+        <PlantDetailModal
+          plant={expandedPlant}
+          onClose={() => setExpandedPlant(null)}
+        />
+      )}
     </div>
   );
 }
+
+// ============ 植物详情弹窗组件 ============
+
+interface PlantDetailModalProps {
+  plant: ExpandedPlant;
+  onClose: () => void;
+}
+
+function PlantDetailModal({ plant, onClose }: PlantDetailModalProps) {
+  const progress = getPlantProgress(plant.value);
+
+  // ESC 键关闭
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+      {/* 背景遮罩 */}
+      <div
+        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      />
+
+      {/* 弹窗内容 */}
+      <div className="relative w-[calc(100vw-32px)] max-w-[380px] max-h-[80vh] bg-gradient-to-br from-white to-cream-50 rounded-3xl shadow-xl animate-scale-in overflow-y-auto">
+        {/* 关闭按钮 */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 w-7 h-7 rounded-full bg-sage-100/80 text-sage-400 hover:text-sage-600 flex items-center justify-center transition-colors cursor-pointer z-10"
+        >
+          ✕
+        </button>
+
+        {/* 内容区域 */}
+        <div className="p-5">
+          {/* 植物 emoji */}
+          <div className="text-center mb-3">
+            <div
+              className="text-5xl mx-auto"
+              style={{
+                transform: `scale(${progress.currentStage === 'mature' ? 1.2 : progress.currentStage === 'lush' ? 1.1 : progress.currentStage === 'growing' ? 1 : 0.9})`,
+              }}
+            >
+              {plant.attitude.plantEmoji}
+            </div>
+          </div>
+
+          {/* 标题 */}
+          <div className="text-center mb-4">
+            <h3 className="font-medium text-sage-700 text-base">{plant.attitude.plant}</h3>
+            <p className="text-xs text-moss-500 mt-0.5">{plant.attitude.name}</p>
+          </div>
+
+          {/* 态度释义 */}
+          <div className="mb-3">
+            <p className="text-xs text-sage-400 mb-0.5">态度释义</p>
+            <p className="text-sm text-sage-600 leading-relaxed">{plant.attitude.meaning}</p>
+          </div>
+
+          {/* 为什么是这个植物 */}
+          <div className="mb-4">
+            <p className="text-xs text-sage-400 mb-0.5">为什么是 {plant.attitude.plant}？</p>
+            <p className="text-sm text-sage-500 italic leading-relaxed">"{plant.attitude.plantReason}"</p>
+          </div>
+
+          {/* 成长进度条 */}
+          <div className="bg-sage-50/80 rounded-2xl p-3">
+            {/* 阶段 + 分数 */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">
+                  {progress.currentStage === 'mature' ? '✨' : progress.currentStage === 'lush' ? '🍃' : progress.currentStage === 'growing' ? '🌿' : '🌱'}
+                </span>
+                <span className="text-sm font-medium text-sage-600">{progress.currentStageName}</span>
+              </div>
+              <span className="text-xs text-sage-500 font-medium">
+                {Math.min(progress.currentScore, 10)} / 10
+              </span>
+            </div>
+
+            {/* 进度条 */}
+            <div className="h-2 bg-sage-100 rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full bg-gradient-to-r from-moss-400 to-sage-500 rounded-full transition-all duration-500"
+                style={{ width: `${progress.progressPercent}%` }}
+              />
+            </div>
+
+            {/* 阶段节点 */}
+            <div className="flex justify-between text-xs text-sage-400 mb-2">
+              <span>🌱</span>
+              <span>🌿</span>
+              <span>🍃</span>
+              <span>✨</span>
+            </div>
+
+            {/* 下一阶段提示 */}
+            {progress.nextStage ? (
+              <div className="text-xs text-sage-500 text-center">
+                再积累 <span className="text-moss-500 font-medium">{progress.pointsToNext}</span> 次浇灌，进入「{progress.nextStageName}」
+              </div>
+            ) : (
+              <div className="text-xs text-moss-500 text-center">
+                🌟 这株植物已经绽放！
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+

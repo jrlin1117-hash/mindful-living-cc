@@ -81,6 +81,8 @@ export default function MeditationPage() {
     setShowFeelingCard(false);
     hasPlayedEndBell.current = false;
     currentSessionRef.current = { duration: 0, feeling: '' };
+    sessionStartRef.current = null;
+    sessionTotalRef.current = 0;
   }, []);
 
   // 开始练习
@@ -91,6 +93,9 @@ export default function MeditationPage() {
     setPhase('running');
     hasPlayedEndBell.current = false;
     currentSessionRef.current = { duration, feeling: '' };
+    // 记录开始时间和总时长，用于息屏后恢复计算
+    sessionStartRef.current = Date.now();
+    sessionTotalRef.current = seconds;
 
     if (bellEnabled) {
       playBell();
@@ -99,11 +104,16 @@ export default function MeditationPage() {
 
   // 暂停
   const pauseTimer = () => {
+    // 记录暂停时刻，保留剩余时间用于恢复
+    sessionStartRef.current = null; // 暂停时不依赖wall clock
     setPhase('paused');
   };
 
   // 继续
   const resumeTimer = () => {
+    // 以当前剩余时间重新开始wall clock计时
+    sessionStartRef.current = Date.now();
+    sessionTotalRef.current = timeLeft; // 用当前剩余秒数作为新的总时长
     setPhase('running');
   };
 
@@ -115,6 +125,8 @@ export default function MeditationPage() {
     setPhase('idle');
     setTimeLeft(0);
     hasPlayedEndBell.current = false;
+    sessionStartRef.current = null;
+    sessionTotalRef.current = 0;
   };
 
   // 完成练习
@@ -126,7 +138,9 @@ export default function MeditationPage() {
 
     // 保存记录
     const record: MeditationRecord = {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2, 8),
       date: today,
+      completedAt: new Date().toISOString(),
       duration,
       feeling: currentSessionRef.current.feeling,
       completed: true,
@@ -150,12 +164,40 @@ export default function MeditationPage() {
     }, 500);
   }, [bellEnabled, today]);
 
+  // 息屏后继续计时的关键：用开始时间戳来计算，而不是依赖 setInterval 计数
+  // 这样手机息屏后唤醒时能通过 wall clock 差值计算出正确剩余时间
+  const sessionStartRef = useRef<number | null>(null);
+  const sessionTotalRef = useRef<number>(0); // 总时长（秒）
+
+  // 使用 requestAnimationFrame 或定期同步机制来保证息屏后重新计算
+  const syncTimeFromWallClock = useCallback(() => {
+    if (sessionStartRef.current === null || sessionTotalRef.current === 0) return;
+    const elapsed = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+    const remaining = Math.max(0, sessionTotalRef.current - elapsed);
+    setTimeLeft(remaining);
+    if (remaining === 0) {
+      completeMeditation();
+    }
+  }, [completeMeditation]);
+
+  // 页面重新可见时（从息屏唤醒）同步时间
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && phase === 'running') {
+        syncTimeFromWallClock();
+        // 同时重启 interval（interval 只用于触发同步，不直接减秒）
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(syncTimeFromWallClock, 1000);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [phase, syncTimeFromWallClock]);
+
   // 计时器逻辑
   useEffect(() => {
     if (phase === 'running' && timeLeft > 0) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(prev => prev - 1);
-      }, 1000);
+      intervalRef.current = setInterval(syncTimeFromWallClock, 1000);
     } else if (timeLeft === 0 && phase === 'running') {
       completeMeditation();
     }
@@ -165,7 +207,7 @@ export default function MeditationPage() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [phase, timeLeft, completeMeditation]);
+  }, [phase, timeLeft, completeMeditation, syncTimeFromWallClock]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);

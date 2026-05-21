@@ -19,14 +19,49 @@ export interface CardDraw {
 }
 
 export interface MeditationRecord {
+  id: string;
   date: string;
+  completedAt: string; // ISO datetime
   duration: number;
   feeling: string;
   completed: boolean;
 }
 
+// 态度卡完成记录（完整结构）
+export interface CardCompletionRecord {
+  id: string;
+  type: 'attitude';
+  date: string;       // yyyy-mm-dd
+  completedAt: string; // ISO datetime
+  drawTime: string;    // 抽取时的 drawTime，用于关联原记录
+  attitudeName: string;
+  plantName: string;
+  emoji: string;
+  actionPlan: string;
+  reflection: string;  // 晚间感受/行动感受
+}
+
+// 冥想记录（带完整字段）
+export interface MeditationRecordFull {
+  id: string;
+  type: 'meditation';
+  date: string;
+  completedAt: string;
+  duration: number;
+  reflection: string;
+}
+
+// 统一记录类型（用于展示）
+export type RecordEntry = CardCompletionRecord | MeditationRecordFull;
+
 export interface PlantData {
   [key: string]: number;
+}
+
+// 植物数据存储结构（含浇灌时间）
+interface PlantStore {
+  scores: { [key: string]: number };
+  lastWateredAt: { [key: string]: string }; // ISO date string yyyy-mm-dd
 }
 
 export interface StreakData {
@@ -46,10 +81,57 @@ export interface MindfulnessAttitude {
   lightColor: string;
 }
 
+// ============ firstUsedAt 工具 ============
+
+const FIRST_USED_AT_KEY = 'mindful_forest_first_used_at';
+
+// 动态计算最早记录日期，不缓存（避免新记录被忽略）
+function computeFirstUsedAt(): string {
+  const today = getToday();
+  const cardRecords = getCardCompletionRecords();
+  const meditationRecords = getMeditationRecords();
+
+  let earliest = today;
+
+  cardRecords.forEach(r => {
+    const d = r.date || r.completedAt?.slice(0, 10);
+    if (d && d < earliest) earliest = d;
+  });
+
+  meditationRecords.forEach(r => {
+    const d = r.date || r.completedAt?.slice(0, 10);
+    if (d && d < earliest) earliest = d;
+  });
+
+  return earliest;
+}
+
+export function getFirstUsedAt(): string {
+  if (typeof window === 'undefined') return getToday();
+  // 始终从现有记录动态计算真实的最早日期
+  return computeFirstUsedAt();
+}
+
+// 仅用于初始化本地存储的首次日期
+export function ensureFirstUsedAt(): void {
+  if (typeof window === 'undefined') return;
+  if (!localStorage.getItem(FIRST_USED_AT_KEY)) {
+    localStorage.setItem(FIRST_USED_AT_KEY, getToday());
+  }
+}
+
 // ============ 日期工具 ============
 
+// 获取本地日期字符串（yyyy-mm-dd）
+function toLocalDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function getToday(): string {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateString(new Date());
 }
 
 export function getNow(): string {
@@ -61,7 +143,7 @@ export function getLast7Days(): string[] {
   for (let i = 6; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
-    days.push(date.toISOString().split('T')[0]);
+    days.push(toLocalDateString(date));
   }
   return days;
 }
@@ -73,7 +155,56 @@ export function isToday(dateStr: string): boolean {
 export function isYesterday(dateStr: string): boolean {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  return dateStr === yesterday.toISOString().split('T')[0];
+  return dateStr === toLocalDateString(yesterday);
+}
+
+// 生成两个日期之间的所有日期（包含首尾，按顺序）
+export function getDatesBetween(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  const current = new Date(start);
+  while (current <= end) {
+    dates.push(toLocalDateString(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
+// 获取某一天的态度卡记录
+export function getCardRecordForDate(date: string): CardCompletionRecord | undefined {
+  const records = getCardCompletionRecords();
+  return records.find(r => {
+    const d = r.date || r.completedAt?.slice(0, 10);
+    return d === date;
+  });
+}
+
+// 获取某一天的冥想记录（可能有多个）
+export function getMeditationRecordsForDate(date: string): MeditationRecord[] {
+  return getMeditationRecords().filter(r => {
+    const d = r.date || r.completedAt?.slice(0, 10);
+    return d === date && r.completed;
+  });
+}
+
+// 获取某一天的综合记录（用于日历详情）
+export interface DayRecordSummary {
+  date: string;
+  hasCard: boolean;
+  hasMeditation: boolean;
+  cardRecord?: CardCompletionRecord;
+  meditationRecords: MeditationRecord[];
+}
+
+export function getDayRecordSummary(date: string): DayRecordSummary {
+  return {
+    date,
+    hasCard: !!getCardRecordForDate(date),
+    hasMeditation: getMeditationRecordsForDate(date).length > 0,
+    cardRecord: getCardRecordForDate(date),
+    meditationRecords: getMeditationRecordsForDate(date),
+  };
 }
 
 // ============ Streak 计算 ============
@@ -1476,7 +1607,15 @@ export const ATTITUDES: MindfulnessAttitude[] = [
 // ============ 态度卡记录 ============
 
 const CARD_DRAWS_KEY = 'mindful_forest_card_draws';
+// 注意：getTodayCards 仍使用此 key（{ drawTime }[] 格式），但 records page 需要 CardCompletionRecord[]
+// 保持向后兼容：写入时同时写两个格式，读records时需要根据是否有 type 字段来判断
 const CARD_COMPLETIONS_KEY = 'mindful_forest_card_completions';
+const CARD_COMPLETIONS_FULL_KEY = 'mindful_forest_card_completions_full';
+
+// 生成唯一ID
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+}
 
 export interface TodayCardsState {
   draws: CardDraw[]; // 今天所有抽取的卡
@@ -1542,20 +1681,36 @@ export function completeCard(drawTime: string, feeling?: string): void {
   const drawsData = localStorage.getItem(CARD_DRAWS_KEY);
   const draws: CardDraw[] = drawsData ? JSON.parse(drawsData) : [];
   const drawIndex = draws.findIndex(d => d.drawTime === drawTime);
+  const draw = draws.find(d => d.drawTime === drawTime);
   if (drawIndex >= 0) {
     draws[drawIndex].completed = true;
     if (feeling) draws[drawIndex].feeling = feeling;
     localStorage.setItem(CARD_DRAWS_KEY, JSON.stringify(draws));
   }
 
-  // 保存完成记录
-  const completionsData = localStorage.getItem(CARD_COMPLETIONS_KEY);
-  const completions: { date: string; drawTime: string }[] = completionsData ? JSON.parse(completionsData) : [];
-  completions.push({ date: today, drawTime });
-  localStorage.setItem(CARD_COMPLETIONS_KEY, JSON.stringify(completions));
+  // 保存完整的完成记录（用于记录页面，写到独立 key）
+  const fullRecordsData = localStorage.getItem(CARD_COMPLETIONS_FULL_KEY);
+  const fullRecords: CardCompletionRecord[] = fullRecordsData ? JSON.parse(fullRecordsData) : [];
+
+  if (draw) {
+    const attitude = ATTITUDES[draw.cardIndex];
+    fullRecords.push({
+      id: generateId(),
+      type: 'attitude',
+      date: today,
+      completedAt: getNow(),
+      drawTime,
+      attitudeName: attitude.name,
+      plantName: attitude.plant,
+      emoji: attitude.plantEmoji,
+      actionPlan: draw.actionSuggestion || '',
+      reflection: feeling || '',
+    });
+  }
+
+  localStorage.setItem(CARD_COMPLETIONS_FULL_KEY, JSON.stringify(fullRecords));
 
   // 增加植物正念值
-  const draw = draws.find(d => d.drawTime === drawTime);
   if (draw) {
     incrementPlantValue(ATTITUDES[draw.cardIndex].plant);
   }
@@ -1581,39 +1736,147 @@ export function getMeditationRecords(): MeditationRecord[] {
 export function saveMeditationRecord(record: MeditationRecord): void {
   if (typeof window === 'undefined') return;
   const records = getMeditationRecords();
+  // 确保有 id 和 completedAt
+  if (!record.id) {
+    record.id = generateId();
+  }
+  if (!record.completedAt) {
+    record.completedAt = getNow();
+  }
   records.push(record);
   localStorage.setItem(MEDITATION_RECORDS_KEY, JSON.stringify(records));
   updateStreak();
 }
 
+// 获取卡完成记录
+export function getCardCompletionRecords(): CardCompletionRecord[] {
+  if (typeof window === 'undefined') return [];
+  const data = localStorage.getItem(CARD_COMPLETIONS_FULL_KEY);
+  return data ? JSON.parse(data) : [];
+}
+
+// 获取所有浇灌记录（态度卡 + 冥想），按时间倒序
+export function getAllRecords(): RecordEntry[] {
+  if (typeof window === 'undefined') return [];
+
+  const cardRecords = getCardCompletionRecords();
+  const meditationRecords = getMeditationRecords() as unknown as MeditationRecordFull[];
+
+  // 统一格式，兼容旧数据（缺字段时补默认值）
+  const attitudeEntries: RecordEntry[] = cardRecords.map(r => ({
+    id: r.id || generateId(),
+    type: 'attitude' as const,
+    date: r.date || '',
+    completedAt: r.completedAt || r.date || new Date().toISOString(),
+    drawTime: r.drawTime || '',
+    attitudeName: r.attitudeName || '',
+    plantName: r.plantName || '',
+    emoji: r.emoji || '🌱',
+    actionPlan: r.actionPlan || '',
+    reflection: r.reflection || '',
+  }));
+
+  const meditationEntries: RecordEntry[] = meditationRecords.map(r => ({
+    id: r.id || generateId(),
+    type: 'meditation' as const,
+    date: r.date || '',
+    completedAt: r.completedAt || r.date || new Date().toISOString(),
+    duration: r.duration || 0,
+    reflection: r.reflection || r.feeling || '',
+  }));
+
+  // 合并并按 completedAt 倒序（安全排序，兼容缺字段的旧数据）
+  const all = [...attitudeEntries, ...meditationEntries];
+  all.sort((a, b) => {
+    const timeA = a.completedAt || a.date || '';
+    const timeB = b.completedAt || b.date || '';
+    return timeB.localeCompare(timeA);
+  });
+
+  return all;
+}
+
 // ============ 植物正念值 ============
 
 const PLANT_VALUES_KEY = 'mindful_forest_plant_values';
+const DAYS_UNTIL_STALE = 7;
 
-export function getPlantValues(): PlantData {
-  if (typeof window === 'undefined') return {};
+// 获取原始存储数据
+function getPlantStore(): PlantStore {
+  if (typeof window === 'undefined') return { scores: {}, lastWateredAt: {} };
   const data = localStorage.getItem(PLANT_VALUES_KEY);
-  return data ? JSON.parse(data) : {};
+  if (!data) return { scores: {}, lastWateredAt: {} };
+  const parsed = JSON.parse(data);
+  // 兼容旧格式：直接是 { plantName: score }
+  if (!parsed.scores && !parsed.lastWateredAt) {
+    return { scores: parsed as PlantData, lastWateredAt: {} };
+  }
+  return { scores: parsed.scores || {}, lastWateredAt: parsed.lastWateredAt || {} };
+}
+
+// 保存植物数据
+function savePlantStore(store: PlantStore): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(PLANT_VALUES_KEY, JSON.stringify(store));
+}
+
+// 获取植物分数（含7天未浇灌归零逻辑）
+export function getPlantValues(): PlantData {
+  const store = getPlantStore();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - DAYS_UNTIL_STALE);
+  const staleThreshold = toLocalDateString(thirtyDaysAgo);
+
+  let didReset = false;
+
+  // 检查每株植物是否超过7天未浇灌
+  Object.keys(store.lastWateredAt).forEach(plant => {
+    if (store.lastWateredAt[plant] && store.lastWateredAt[plant] < staleThreshold) {
+      store.scores[plant] = 0;
+      // 清除旧的浇水记录，避免重复检查
+      delete store.lastWateredAt[plant];
+      didReset = true;
+    }
+  });
+
+  // 如果有归零操作，保存
+  if (didReset) {
+    savePlantStore(store);
+  }
+
+  return store.scores;
+}
+
+// 获取某株植物的最后浇灌日期
+export function getPlantLastWateredAt(plantName: string): string | null {
+  const store = getPlantStore();
+  return store.lastWateredAt[plantName] || null;
 }
 
 export function savePlantValues(values: PlantData): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(PLANT_VALUES_KEY, JSON.stringify(values));
+  const store = getPlantStore();
+  // 保留 lastWateredAt，只更新 scores
+  store.scores = values;
+  savePlantStore(store);
 }
 
 export function incrementPlantValue(plantName: string, amount: number = 1): void {
-  const values = getPlantValues();
-  values[plantName] = (values[plantName] || 0) + amount;
-  savePlantValues(values);
+  const store = getPlantStore();
+  store.scores[plantName] = (store.scores[plantName] || 0) + amount;
+  store.lastWateredAt[plantName] = getToday();
+  savePlantStore(store);
 }
 
 export function incrementAllPlants(amount: number = 1): void {
   const plants = getAllPlantNames();
-  const values = getPlantValues();
+  const store = getPlantStore();
+  const today = getToday();
   plants.forEach(plant => {
-    values[plant] = (values[plant] || 0) + amount;
+    store.scores[plant] = (store.scores[plant] || 0) + amount;
+    store.lastWateredAt[plant] = today;
   });
-  savePlantValues(values);
+  savePlantStore(store);
 }
 
 // ============ 统计数据 ============
@@ -1677,9 +1940,11 @@ export function resetAllData(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(CARD_DRAWS_KEY);
   localStorage.removeItem(CARD_COMPLETIONS_KEY);
+  localStorage.removeItem(CARD_COMPLETIONS_FULL_KEY);
   localStorage.removeItem(MEDITATION_RECORDS_KEY);
   localStorage.removeItem(PLANT_VALUES_KEY);
   localStorage.removeItem(STREAK_KEY);
+  localStorage.removeItem(FIRST_USED_AT_KEY);
 }
 
 // ============ 辅助函数 ============
@@ -1725,6 +1990,7 @@ export interface PlantProgress {
 // 获取植物进度信息
 export function getPlantProgress(score: number): PlantProgress {
   const thresholds = { seedling: 0, growing: 3, lush: 6, mature: 10 };
+  const MAX_SCORE = 10;
 
   let currentStage: GrowthStage;
   let currentStageName: string;
@@ -1732,24 +1998,24 @@ export function getPlantProgress(score: number): PlantProgress {
   let nextStageName: string;
   let nextStageThreshold: number;
   let pointsToNext: number;
-  let progressPercent: number;
+
+  // 统一按10分制计算进度百分比
+  const progressPercent = Math.min(score, MAX_SCORE) / MAX_SCORE * 100;
 
   if (score >= 10) {
     currentStage = 'mature';
     currentStageName = '绽放';
     nextStage = null;
     nextStageName = '';
-    nextStageThreshold = 10;
+    nextStageThreshold = MAX_SCORE;
     pointsToNext = 0;
-    progressPercent = 100;
   } else if (score >= 6) {
     currentStage = 'lush';
     currentStageName = '茂盛';
     nextStage = 'mature';
     nextStageName = '绽放';
-    nextStageThreshold = 10;
-    pointsToNext = 10 - score;
-    progressPercent = Math.round(((score - 6) / 4) * 100);
+    nextStageThreshold = MAX_SCORE;
+    pointsToNext = MAX_SCORE - score;
   } else if (score >= 3) {
     currentStage = 'growing';
     currentStageName = '生长中';
@@ -1757,7 +2023,6 @@ export function getPlantProgress(score: number): PlantProgress {
     nextStageName = '茂盛';
     nextStageThreshold = 6;
     pointsToNext = 6 - score;
-    progressPercent = Math.round(((score - 3) / 3) * 100);
   } else {
     currentStage = 'seedling';
     currentStageName = '幼苗';
@@ -1765,7 +2030,6 @@ export function getPlantProgress(score: number): PlantProgress {
     nextStageName = '生长中';
     nextStageThreshold = 3;
     pointsToNext = 3 - score;
-    progressPercent = score > 0 ? Math.round((score / 3) * 100) : 0;
   }
 
   return {
