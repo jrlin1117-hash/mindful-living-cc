@@ -47,6 +47,9 @@ export default function MeditationPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasPlayedEndBell = useRef(false);
   const currentSessionRef = useRef({ duration: 0, feeling: '' });
+  // 息屏后继续计时：用开始时间戳 + wall clock 差值，而非逐秒递减
+  const sessionStartRef = useRef<number | null>(null);
+  const sessionTotalRef = useRef<number>(0); // 总时长（秒）
 
   const today = getToday();
 
@@ -166,8 +169,6 @@ export default function MeditationPage() {
 
   // 息屏后继续计时的关键：用开始时间戳来计算，而不是依赖 setInterval 计数
   // 这样手机息屏后唤醒时能通过 wall clock 差值计算出正确剩余时间
-  const sessionStartRef = useRef<number | null>(null);
-  const sessionTotalRef = useRef<number>(0); // 总时长（秒）
 
   // 使用 requestAnimationFrame 或定期同步机制来保证息屏后重新计算
   const syncTimeFromWallClock = useCallback(() => {
