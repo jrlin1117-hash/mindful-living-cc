@@ -23,7 +23,8 @@ export interface MeditationRecord {
   date: string;
   completedAt: string; // ISO datetime
   duration: number;
-  feeling: string;
+  feeling: string;      // 旧字段，兼容旧版数据
+  reflection?: string; // 新字段，当前冥想页面创建时使用
   completed: boolean;
 }
 
@@ -1760,7 +1761,7 @@ export function getAllRecords(): RecordEntry[] {
   if (typeof window === 'undefined') return [];
 
   const cardRecords = getCardCompletionRecords();
-  const meditationRecords = getMeditationRecords() as unknown as MeditationRecordFull[];
+  const meditationRecords = getMeditationRecords() as MeditationRecord[];
 
   // 统一格式，兼容旧数据（缺字段时补默认值）
   const attitudeEntries: RecordEntry[] = cardRecords.map(r => ({
