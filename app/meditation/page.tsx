@@ -23,13 +23,60 @@ function setBellEnabled(enabled: boolean): void {
   localStorage.setItem(BELL_STORAGE_KEY, String(enabled));
 }
 
-function playBell(): void {
+async function playBell(bellAudioRef?: { current: HTMLAudioElement | null }): Promise<boolean> {
   try {
-    const audio = new Audio('/sounds/bell.mp3');
+    // 优先复用预创建的 Audio（有用户手势时创建的，更容易通过权限检查）
+    const audio = bellAudioRef?.current ?? new Audio('/sounds/bell.mp3');
     audio.volume = 0.5;
     audio.currentTime = 0;
-    audio.play().catch(() => {});
-  } catch {}
+    await audio.play();
+    return true;
+  } catch {
+    // 预创建的播不了？尝试新建一个兜底
+    try {
+      const audio = new Audio('/sounds/bell.mp3');
+      audio.volume = 0.5;
+      await audio.play();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// 创建静音音频循环，保持 iOS/安卓音频会话活跃
+// 原理：浏览器检测到页面有活跃音频播放时，后续 Audio.play() 不需要新的用户手势
+function createSilentLoop(): HTMLAudioElement {
+  // 极短静音 WAV 的 data URI（~100 bytes）
+  const audio = new Audio(
+    'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+  );
+  audio.loop = true;
+  audio.volume = 0.0;
+  audio.play().catch(() => {});
+  return audio;
+}
+
+function destroySilentLoop(audio: HTMLAudioElement | null): void {
+  if (!audio) return;
+  audio.pause();
+  audio.src = '';
+  audio.load();
+}
+
+// Wake Lock（安卓防自动熄屏）
+async function requestWakeLock(): Promise<WakeLockSentinel | null> {
+  if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return null;
+  try {
+    return await navigator.wakeLock.request('screen');
+  } catch {
+    return null;
+  }
+}
+
+async function releaseWakeLock(sentinel: WakeLockSentinel | null): Promise<void> {
+  if (!sentinel) return;
+  try { await sentinel.release(); } catch {}
 }
 
 // ============ 组件 ============
@@ -50,6 +97,10 @@ export default function MeditationPage() {
   // 息屏后继续计时：用开始时间戳 + wall clock 差值，而非逐秒递减
   const sessionStartRef = useRef<number | null>(null);
   const sessionTotalRef = useRef<number>(0); // 总时长（秒）
+  // 预创建 Audio 元素（有用户手势时创建），保持音频会话活跃以支持熄屏后响铃
+  const bellAudioRef = useRef<HTMLAudioElement | null>(null);
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const today = getToday();
 
@@ -86,6 +137,9 @@ export default function MeditationPage() {
     currentSessionRef.current = { duration: 0, feeling: '' };
     sessionStartRef.current = null;
     sessionTotalRef.current = 0;
+    // 清理静音循环（不销毁 bellAudioRef，下次 startTimer 复用）
+    destroySilentLoop(silentAudioRef.current);
+    silentAudioRef.current = null;
   }, []);
 
   // 开始练习
@@ -100,9 +154,24 @@ export default function MeditationPage() {
     sessionStartRef.current = Date.now();
     sessionTotalRef.current = seconds;
 
-    if (bellEnabled) {
-      playBell();
+    // 在有用户手势的时机预创建 Audio 元素，后续 play() 更容易通过权限检查
+    if (!bellAudioRef.current) {
+      bellAudioRef.current = new Audio('/sounds/bell.mp3');
+      bellAudioRef.current.preload = 'auto';
     }
+    bellAudioRef.current.volume = 0.5;
+
+    // 启动静音循环，保持音频会话活跃（iOS 熄屏唤醒后仍可播放铃声）
+    if (!silentAudioRef.current) {
+      silentAudioRef.current = createSilentLoop();
+    }
+
+    if (bellEnabled) {
+      void playBell(bellAudioRef);
+    }
+
+    // 请求 Wake Lock 防止自动熄屏（安卓）
+    requestWakeLock().then(s => { wakeLockRef.current = s; });
   };
 
   // 暂停
@@ -110,6 +179,11 @@ export default function MeditationPage() {
     // 记录暂停时刻，保留剩余时间用于恢复
     sessionStartRef.current = null; // 暂停时不依赖wall clock
     setPhase('paused');
+    // 停止静音循环和 Wake Lock
+    destroySilentLoop(silentAudioRef.current);
+    silentAudioRef.current = null;
+    releaseWakeLock(wakeLockRef.current);
+    wakeLockRef.current = null;
   };
 
   // 继续
@@ -118,6 +192,11 @@ export default function MeditationPage() {
     sessionStartRef.current = Date.now();
     sessionTotalRef.current = timeLeft; // 用当前剩余秒数作为新的总时长
     setPhase('running');
+    // 重建静音循环，保持音频会话活跃
+    if (!silentAudioRef.current) {
+      silentAudioRef.current = createSilentLoop();
+    }
+    requestWakeLock().then(s => { wakeLockRef.current = s; });
   };
 
   // 重置（回到初始选择时长状态）
@@ -130,6 +209,11 @@ export default function MeditationPage() {
     hasPlayedEndBell.current = false;
     sessionStartRef.current = null;
     sessionTotalRef.current = 0;
+    // 销毁静音循环和 Wake Lock
+    destroySilentLoop(silentAudioRef.current);
+    silentAudioRef.current = null;
+    releaseWakeLock(wakeLockRef.current);
+    wakeLockRef.current = null;
   };
 
   // 完成练习
@@ -155,8 +239,15 @@ export default function MeditationPage() {
     setTodayCompleted(true);
 
     if (bellEnabled) {
-      playBell();
+      void playBell(bellAudioRef);
     }
+
+    // 停止静音循环，释放在下一次冥想前不需要了
+    destroySilentLoop(silentAudioRef.current);
+    silentAudioRef.current = null;
+    // 释放 wake lock
+    releaseWakeLock(wakeLockRef.current);
+    wakeLockRef.current = null;
 
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
@@ -189,6 +280,12 @@ export default function MeditationPage() {
         // 同时重启 interval（interval 只用于触发同步，不直接减秒）
         if (intervalRef.current) clearInterval(intervalRef.current);
         intervalRef.current = setInterval(syncTimeFromWallClock, 1000);
+        // 从息屏唤醒后重建静音循环（iOS 挂起期间可能被销毁）
+        if (!silentAudioRef.current) {
+          silentAudioRef.current = createSilentLoop();
+        }
+        // 重新获取 Wake Lock（安卓手动锁屏后会被释放）
+        requestWakeLock().then(s => { wakeLockRef.current = s; });
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
